@@ -12,52 +12,53 @@
 (define-alias AudioManager android.media.AudioManager)
 (define-alias AudioFormat android.media.AudioFormat)
 (define-alias Math java.lang.Math)
+(define-alias ByteVector gnu.lists.ByteVector)
 
-(activity main
-  (on-create-view
-   (let* ((sensor-mgr (as SensorManager ((this):getSystemService "sensor")))
-          (light-sensor (sensor-mgr:getDefaultSensor Sensor:TYPE_LIGHT))
-          (feedback (android.widget.TextView (this) text: "--"))
-          (track (AudioTrack AudioManager:STREAM_MUSIC
-                             8000
-                             AudioFormat:CHANNEL_CONFIGURATION_MONO
-                             AudioFormat:ENCODING_PCM_16BIT
-                             4
-                             AudioTrack:MODE_STREAM)))
-                            
-     (sensor-mgr:register-listener
-      (object (SensorEventListener)
-              ((on-accuracy-changed sensor accuracy) #!void)
-              ((on-sensor-changed (evt :: SensorEvent))
+(define (logi . entries)
+  (for-each (lambda (e) 
+              (android.util.Log:i "com.benjisimon.lightjam" e))
+            entries))
 
-               (define (tone light-level)
-                 (define (s i)
-                   (sin (/ (* 2 Math:PI i)
-                           8000
-                           100)))
-                 (let ((samples (list (s 0)
-                                      (s 1)
-                                      (s 2)
-                                      (s 3)))
-                       (buffer (make byte[] length: 8))
-                       (i 0))
-                   (for-each (lambda (s)
-                               (set! (buffer i) (bitwise-and s #x00FF))
-                               (set! i (+ 1 i))
-                               (set! (buffer i) (bitwise-arithmetic-shift-right (bitwise-and s #xFF00) 8))
-                               (set! i (+ 1 i)))
-                             samples)
-                   (track:write buffer 0 4)))
+(activity 
+ main
+ (feedback       :: TextView)
+ (handler        :: SensorEventListener)
+ (track          :: AudioTrack)
+ (sensor-mgr     :: SensorManager)
 
-               (let ((light-level (evt:values 0)))
-                 (tone light-level)
-                 (feedback:setText (number->string light-level))
-                 #!void)))
-      light-sensor
-      SensorManager:SENSOR_DELAY_FASTEST)
+ (on-create-view
+  (set! (this):feedback  (TextView (this) text: "--"))
+  (set! (this):track     (AudioTrack AudioManager:STREAM_MUSIC
+                                     8000
+                                     AudioFormat:CHANNEL_CONFIGURATION_MONO
+                                     AudioFormat:ENCODING_PCM_16BIT
+                                     4
+                                     AudioTrack:MODE_STREAM))
+  (set! (this):sensor-mgr (as SensorManager ((this):getSystemService "sensor")))
+
+  ((as AudioTrack (this):track):play)
+  (this):feedback)
+
+ ((on-resume)
+  (invoke-special android.app.Activity (this) 'onResume)
+  (let* ((light-sensor ((this):sensor-mgr:getDefaultSensor Sensor:TYPE_LIGHT))
+         (feedback (this):feedback))
+     (set! (this):handler 
+           (object (SensorEventListener)
+                   ((on-accuracy-changed sensor accuracy) #!void)
+                   ((on-sensor-changed (evt :: SensorEvent))
+                    (let* ((light-level (evt:values 0)))
+                      (feedback:setText (string-append (number->string light-level)))
+                      #!void))))
+     ((this):sensor-mgr:register-listener (this):handler
+                                   light-sensor
+                                   SensorManager:SENSOR_DELAY_FASTEST)))
      
-     (track:play)
-      
-     feedback)))
+
+ ((on-pause)
+  (invoke-special android.app.Activity (this) 'onPause)  
+  (this):sensor-mgr:unregister-listener (this):handler)
+
+ )
 
    
