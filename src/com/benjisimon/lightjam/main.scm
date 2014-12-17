@@ -82,8 +82,7 @@
                     (let* ((light-level (evt:values 0))
                            (notes        (as byte[] (notes offset block-size))))
                       (set! offset (+ offset block-size))
-                      (feedback:setText (stringify (list light-level
-                                                         notes:length)))
+                      (feedback:setText (stringify (list light-level offset)))
                       (track:write notes 0 notes:length)
                       #!void))))
      ((this):sensor-mgr:register-listener (this):handler
