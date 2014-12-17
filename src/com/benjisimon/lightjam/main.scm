@@ -22,21 +22,24 @@
 
 
 
-(define (note)
+(define (notes index count)
   (define (amplitude i)
     (inexact->exact (floor (* (sin (/ (* 2 Math:PI i)
                                       (/ 8000
                                          440)))
-                              32767)))) 
+                              32767))))
   (define (byteify x)
     (let ((lower (bitwise-and x #x00FF))
           (upper (bitwise-arithmetic-shift-right (bitwise-and x #xFF00) 8)))
-      ((as ByteVector (bytevector lower upper)):get-buffer)))
+      (bytevector lower upper)))
 
-  (let ((now ((Date):getTime)))
-    (byteify (amplitude (modulo now 100)))))
-
-
+  (let loop ((count count) (result (bytevector)) (i index))
+    (cond ((= count 0)  ((as ByteVector result):get-buffer))
+          (else 
+           (loop (- count 1)
+                 (bytevector-append result (byteify (amplitude i)))
+                 (+ i 1))))))
+  
 (define (stringify x)
   (let ((out (open-output-string)))
     (display x out)
@@ -58,7 +61,7 @@
                                      8000
                                      AudioFormat:CHANNEL_CONFIGURATION_MONO
                                      AudioFormat:ENCODING_PCM_16BIT
-                                     20
+                                     8000
                                      AudioTrack:MODE_STREAM))
   (set! (this):sensor-mgr (as SensorManager ((this):getSystemService "sensor")))
 
@@ -69,15 +72,19 @@
   (invoke-special android.app.Activity (this) 'onResume)
   (let* ((light-sensor ((this):sensor-mgr:getDefaultSensor Sensor:TYPE_LIGHT))
          (feedback (this):feedback)
-         (track (this):track))
+         (track (this):track)
+         (offset 0)
+         (block-size 200))
      (set! (this):handler 
            (object (SensorEventListener)
                    ((on-accuracy-changed sensor accuracy) #!void)
                    ((on-sensor-changed (evt :: SensorEvent))
                     (let* ((light-level (evt:values 0))
-                           (note        (note)))
-                      (feedback:setText (stringify (list light-level note)))
-                      (track:write note 0 1)
+                           (notes        (as byte[] (notes offset block-size))))
+                      (set! offset (+ offset block-size))
+                      (feedback:setText (stringify (list light-level
+                                                         notes:length)))
+                      (track:write notes 0 notes:length)
                       #!void))))
      ((this):sensor-mgr:register-listener (this):handler
                                    light-sensor
@@ -86,7 +93,8 @@
 
  ((on-pause)
   (invoke-special android.app.Activity (this) 'onPause)  
-  (this):sensor-mgr:unregister-listener (this):handler)
+  (let ((mgr (this):sensor-mgr))
+    (mgr:unregisterListener (this):handler)))
 
  )
 
